@@ -1,0 +1,59 @@
+{
+  "name": "@urbankitstudio/mcp-atlas",
+  "version": "0.1.2",
+  "description": "Query 137 verified US county parcel ArcGIS REST endpoints — owner/APN lookup — via MCP",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "parcel",
+    "gis",
+    "arcgis",
+    "county",
+    "apn",
+    "address-to-parcel",
+    "property-data",
+    "real-estate",
+    "esri"
+  ],
+  "homepage": "https://urbankitstudio.com/parcel-atlas",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LEOyrh/mcp-atlas.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LEOyrh/urbankitstudio/issues"
+  },
+  "author": "Leo Yong <leoyrhbiz@gmail.com>",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "bin": {
+    "mcp-atlas": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node test/smoke.mjs",
+    "prepublishOnly": "npm run typecheck && npm run build && npm run smoke"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@urbankitstudio/atlas": "^0.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^5.8.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
