@@ -1,6 +1,7 @@
 {
   "name": "@urbankitstudio/mcp-atlas",
-  "version": "0.1.2",
+  "version": "0.1.3",
+  "mcpName": "io.github.leoyrh/mcp-atlas",
   "description": "Query 137 verified US county parcel ArcGIS REST endpoints — owner/APN lookup — via MCP",
   "keywords": [
     "mcp",
