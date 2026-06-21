@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.leoyrh/mcp-atlas",
+  "name": "io.github.LEOyrh/mcp-atlas",
   "description": "Query verified US county parcel ArcGIS REST endpoints for owner/APN lookup. No API key needed.",
   "repository": {
     "url": "https://github.com/LEOyrh/mcp-atlas",
