@@ -4,4 +4,6 @@ dist/
 .DS_Store
 mcp-publisher.exe
 *.tar.gz
+*.sbom.json
+*.sigstore.json
 package-lock.bad.json
