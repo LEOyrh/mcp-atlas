@@ -1,6 +1,6 @@
 # @urbankitstudio/mcp-atlas
 
-[![MCP server scored on Glama](https://glama.ai/mcp/servers/LEOyrh/mcp-atlas/badges/score.svg)](https://glama.ai/mcp/servers/LEOyrh/mcp-atlas)
+[![mcp-atlas MCP server](https://glama.ai/mcp/servers/LEOyrh/mcp-atlas/badges/card.svg)](https://glama.ai/mcp/servers/LEOyrh/mcp-atlas)
 
 Query 150+ verified US county parcel ArcGIS REST endpoints — owner/APN lookup — via MCP.
 
