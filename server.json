@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.LEOyrh/mcp-atlas",
-  "description": "Query verified US county parcel ArcGIS REST endpoints for owner/APN lookup. No API key needed.",
+  "description": "Query 155 verified US county parcel ArcGIS REST endpoints for owner/APN lookup. No API key needed.",
   "repository": {
     "url": "https://github.com/LEOyrh/mcp-atlas",
     "source": "github"
   },
-  "version": "0.1.4",
+  "version": "0.1.5",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@urbankitstudio/mcp-atlas",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "transport": {
         "type": "stdio"
       }

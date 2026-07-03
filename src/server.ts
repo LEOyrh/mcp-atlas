@@ -105,7 +105,7 @@ server.registerTool(
   {
     title: "List covered counties",
     description:
-      "Returns all counties in the UrbanKit Atlas that have a verified ArcGIS REST parcel endpoint. Pass a state abbreviation (e.g. 'IL') or state name (e.g. 'Illinois') to filter by state. Omit state to list all ~137 counties.",
+      "Returns all counties in the UrbanKit Atlas that have a verified ArcGIS REST parcel endpoint. Pass a state abbreviation (e.g. 'IL') or state name (e.g. 'Illinois') to filter by state. Omit state to list all ~155 counties.",
     inputSchema: {
       state: z
         .string()
