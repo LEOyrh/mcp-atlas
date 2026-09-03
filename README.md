@@ -155,4 +155,4 @@ Atlas data is embedded in the package (no network calls at startup). The underly
 
 ## License
 
-MIT — © Leo Yong / UrbanKit Studio
+MIT — © 2026 UrbanKit Studio

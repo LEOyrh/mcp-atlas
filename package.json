@@ -24,7 +24,7 @@
   "bugs": {
     "url": "https://github.com/LEOyrh/urbankitstudio/issues"
   },
-  "author": "Leo Yong <leoyrhbiz@gmail.com>",
+  "author": "UrbanKit Studio <urbankitstudio@gmail.com>",
   "license": "MIT",
   "type": "module",
   "main": "./dist/server.js",
