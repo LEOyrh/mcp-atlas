@@ -15,27 +15,68 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod/v3";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { resolve, dirname } from "node:path";
 import {
   atlas,
   atlasIndex,
   slugify,
   countySlugFromName,
+  isReviewedUnservable,
+  reviewedCapability,
 } from "@urbankitstudio/atlas";
+
+const PKG_VERSION: string = JSON.parse(
+  readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../package.json"), "utf8"),
+).version;
 import type { CountyRecord, EndpointRecord } from "@urbankitstudio/atlas";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function ownerFieldFrom(endpoint: EndpointRecord): string | null {
+/**
+ * The owner column a caller can actually USE, or null with a reason.
+ *
+ * Matching the column name is not enough, and that gap cost a real trial user:
+ * they paid for owner data, ran Los Angeles County, got nothing back, and the
+ * atlas had said the field was there the whole time. Fourteen counties in the
+ * registry document an owner column that is present and empty on every row -
+ * New Jersey's statewide layer publishes OWNER_NAME blank across 3,481,240
+ * rows, New York's across 3,827,530 - and a reviewed capability record says so.
+ * Consult it BEFORE promising the field.
+ */
+function ownerFieldFor(
+  county: CountyRecord,
+  endpoint: EndpointRecord,
+): { field: string | null; unavailableReason: string | null } {
+  if (isReviewedUnservable(county, "owner_name")) {
+    const reviewed = reviewedCapability(county, "owner_name");
+    return {
+      field: null,
+      unavailableReason:
+        reviewed?.basis?.note ??
+        "this county publishes no usable owner name on its public endpoint",
+    };
+  }
   const f = endpoint.searchFields.find((sf) =>
     /owner|taxpayer|taxname/i.test(sf.name)
   );
-  return f?.name ?? null;
+  return { field: f?.name ?? null, unavailableReason: null };
 }
 
-function buildArcgisOwnerQuery(endpoint: EndpointRecord, ownerQuery: string): string {
-  const field = ownerFieldFrom(endpoint);
+/** Back-compat shim for call sites that only need the column. */
+function ownerFieldFrom(county: CountyRecord, endpoint: EndpointRecord): string | null {
+  return ownerFieldFor(county, endpoint).field;
+}
+
+function buildArcgisOwnerQuery(
+  county: CountyRecord,
+  endpoint: EndpointRecord,
+  ownerQuery: string,
+): string {
+  const field = ownerFieldFrom(county, endpoint);
   if (!field) return "";
   const where = `UPPER(${field}) LIKE UPPER('%25${encodeURIComponent(ownerQuery)}%25')`;
   const liveFields = endpoint.searchFields
@@ -58,7 +99,7 @@ function formatCountySummary(c: CountyRecord): string {
       ? "no REST endpoint mapped"
       : c.endpoints
           .map((ep) => {
-            const ownerField = ownerFieldFrom(ep);
+            const owner = ownerFieldFor(c, ep);
             const searchable = ep.searchFields
               .filter((sf) => sf.searchable)
               .map((sf) => `${sf.name} (${sf.label})`)
@@ -66,9 +107,14 @@ function formatCountySummary(c: CountyRecord): string {
             return [
               `  URL: ${ep.url}`,
               `  Service: ${ep.serviceType}/layer ${ep.layerIndex}`,
-              `  Status: ${ep.status}`,
+              `  Status: ${ep.status} (verified ${ep.lastVerified})`,
               `  Searchable fields: ${searchable || "none"}`,
-              `  Owner field: ${ownerField ?? "none (PIN-only county)"}`,
+              `  Owner field: ${
+                owner.field ??
+                (owner.unavailableReason
+                  ? `NOT AVAILABLE - ${owner.unavailableReason}`
+                  : "none (this layer publishes no owner column)")
+              }`,
               `  License: ${ep.license}`,
             ].join("\n");
           })
@@ -89,7 +135,10 @@ function formatCountySummary(c: CountyRecord): string {
 // ---------------------------------------------------------------------------
 
 const server = new McpServer(
-  { name: "mcp-atlas", version: "0.1.0" },
+  // Read from package.json rather than restated here. This line said 0.1.0
+  // while the package was 0.1.6 - six releases of drift, and every MCP client
+  // that asked the server its version got the wrong answer.
+  { name: "mcp-atlas", version: PKG_VERSION },
   {
     instructions:
       "UrbanKit Atlas MCP server. Use list_counties to discover coverage, find_county or get_parcel_endpoint to get the ArcGIS REST URL, and build_owner_query to construct a ready-to-fire owner-name lookup URL.",
@@ -105,7 +154,7 @@ server.registerTool(
   {
     title: "List covered counties",
     description:
-      "Returns all counties in the UrbanKit Atlas that have a verified ArcGIS REST parcel endpoint. Pass a state abbreviation (e.g. 'IL') or state name (e.g. 'Illinois') to filter by state. Omit state to list all ~155 counties.",
+      `Returns all counties in the UrbanKit Atlas that have a verified ArcGIS REST parcel endpoint. Pass a state abbreviation (e.g. 'IL') or state name (e.g. 'Illinois') to filter by state. Omit state to list all ~${atlas.totals.counties} counties.`,
     inputSchema: {
       state: z
         .string()
@@ -138,9 +187,19 @@ server.registerTool(
         (c) => c.endpoints.length > 0
       );
       for (const c of covered) {
-        const ownerCoverage = c.endpoints.some((ep) => ownerFieldFrom(ep))
+        // "APN only" is not the same claim as "owner+APN minus the owner".
+        // A caller scanning this column is deciding whether to spend a request,
+        // so a county whose owner column exists and is empty must not read as
+        // though owners are simply absent from the schema.
+        const anyOwner = c.endpoints.some((ep) => ownerFieldFor(c, ep).field);
+        const ownerWithheld = c.endpoints.some(
+          (ep) => ownerFieldFor(c, ep).unavailableReason,
+        );
+        const ownerCoverage = anyOwner
           ? "owner+APN"
-          : "APN only";
+          : ownerWithheld
+            ? "APN only (county publishes no owner name)"
+            : "APN only";
         rows.push(
           `${c.state} | ${c.county.padEnd(20)} | ${c.countySlug.padEnd(24)} | ${ownerCoverage}`
         );
@@ -345,9 +404,10 @@ server.registerTool(
     ];
 
     countyRecord.endpoints.forEach((ep, i) => {
-      const ownerField = ownerFieldFrom(ep);
+      const owner = ownerFieldFor(countyRecord, ep);
+      const ownerField = owner.field;
       const sampleOwnerUrl = ownerField
-        ? buildArcgisOwnerQuery(ep, "SMITH")
+        ? buildArcgisOwnerQuery(countyRecord, ep, "SMITH")
         : null;
 
       lines.push(`Endpoint ${i + 1}:`);
@@ -364,7 +424,14 @@ server.registerTool(
         .filter((sf) => sf.searchable)
         .forEach((sf) => lines.push(`    ${sf.name.padEnd(20)} – ${sf.label}`));
       lines.push("");
-      lines.push(`  Owner field: ${ownerField ?? "NONE — PIN-only county"}`);
+      lines.push(
+        `  Owner field: ${
+          ownerField ??
+          (owner.unavailableReason
+            ? `NOT AVAILABLE - ${owner.unavailableReason}`
+            : "NONE - this layer publishes no owner column")
+        }`,
+      );
       if (ep.sampleQuery) {
         lines.push("");
         lines.push("  Sample query (from atlas):");
@@ -449,15 +516,21 @@ server.registerTool(
     const results: string[] = [];
 
     for (const ep of countyRecord.endpoints) {
-      const ownerField = ownerFieldFrom(ep);
+      const owner = ownerFieldFor(countyRecord, ep);
+      const ownerField = owner.field;
       if (!ownerField) {
+        // Refusing with the reason beats handing back a query that returns zero
+        // rows forever. The caller can then choose a different county or a
+        // different field instead of concluding the owner simply is not there.
         results.push(
-          `Endpoint: ${ep.url}\nNote: No owner/taxpayer field available in this county — PIN-only lookup. Try searching by parcel number instead.`
+          owner.unavailableReason
+            ? `Endpoint: ${ep.url}\nOWNER NAME NOT AVAILABLE for ${countyRecord.county}, ${countyRecord.stateName}: ${owner.unavailableReason}\nNo owner query is possible here. Search by parcel number or address instead, or pick a county whose coverage reads owner+APN in list_counties.`
+            : `Endpoint: ${ep.url}\nNote: this layer publishes no owner or taxpayer column - PIN-only lookup. Try searching by parcel number instead.`
         );
         continue;
       }
 
-      const queryUrl = buildArcgisOwnerQuery(ep, owner_name);
+      const queryUrl = buildArcgisOwnerQuery(countyRecord, ep, owner_name);
       const where = `UPPER(${ownerField}) LIKE UPPER('%${owner_name}%')`;
 
       results.push(

@@ -126,6 +126,60 @@ async function run() {
   assert(queryText.includes("UPPER(TaxName)"), "build_owner_query uses UPPER() wrapper");
   assert(queryText.includes("SMITH"), "build_owner_query includes owner name");
 
+  // Step 7: THE CASE THAT COST A REAL USER.
+  //
+  // Oakland County MI documents NAME1 and NAME2 as owner columns, and neither
+  // carries a value in any record sampled; the atlas carries a reviewed
+  // not_published record for it. Before this, list_counties called such a
+  // county "owner+APN", find_county printed the column as usable, and
+  // build_owner_query handed back a query returning zero rows forever - so
+  // the only way to find out was to spend a request and get nothing. Five
+  // other counties share the shape in atlas 0.6.2.
+  //
+  // This fixture was Wake County NC until 2026-09-02. Wake's "empty OWNER
+  // column" advisory came from an audit predicate that compared against NULL
+  // and was reverted before atlas 0.6.1: Wake publishes owner names on
+  // 437,715 rows, and no published atlas carries an override for it.
+  sendMessage(proc, 6, "tools/call", {
+    name: "list_counties",
+    arguments: { state: "MI" },
+  });
+  const miResp = await readResponse(proc);
+  const miText = miResp.result?.content?.[0]?.text ?? "";
+  const oaklandRow = miText.split("\n").find((l) => l.includes("Oakland")) ?? "";
+  assert(oaklandRow.length > 0, "list_counties includes Oakland County");
+  assert(
+    oaklandRow.includes("publishes no owner name"),
+    "list_counties SAYS Oakland publishes no owner name",
+  );
+  assert(!oaklandRow.includes("owner+APN"), "list_counties does not claim owner+APN for Oakland");
+
+  sendMessage(proc, 7, "tools/call", {
+    name: "find_county",
+    arguments: { query: "Oakland MI" },
+  });
+  const oaklandFind = await readResponse(proc);
+  const oaklandFindText = oaklandFind.result?.content?.[0]?.text ?? "";
+  assert(
+    oaklandFindText.includes("NOT AVAILABLE"),
+    "find_county states Oakland's owner field is not available",
+  );
+
+  sendMessage(proc, 8, "tools/call", {
+    name: "build_owner_query",
+    arguments: { state: "MI", county: "Oakland", owner_name: "SMITH" },
+  });
+  const oaklandQuery = await readResponse(proc);
+  const oaklandQueryText = oaklandQuery.result?.content?.[0]?.text ?? "";
+  assert(
+    oaklandQueryText.includes("OWNER NAME NOT AVAILABLE"),
+    "build_owner_query REFUSES for Oakland instead of returning a dud query",
+  );
+  assert(
+    !oaklandQueryText.includes("UPPER(NAME1)"),
+    "build_owner_query does not hand back an owner WHERE clause for Oakland",
+  );
+
   // Cleanup
   proc.stdin.end();
   proc.kill();
