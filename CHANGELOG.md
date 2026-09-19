@@ -6,6 +6,41 @@ and tarball diffs (`npm pack` + `diff`) during the 2026-07-20 repo
 reconciliation, since none of those publishes had a corresponding commit in
 this monorepo to draw from.
 
+## 0.2.2 — 2026-09-18
+
+Tool descriptions rewritten, plus one security fix. The same four tools take the
+same parameters and return the same shape of payload.
+
+- **An owner name can no longer escape the SQL string literal.**
+  `build_owner_query` put the caller's text into an ArcGIS `where` clause behind
+  nothing but `encodeURIComponent`, which is not an escape here: `'` and `)` are
+  both in its unreserved set, so `A') OR 1=1 --` passed through intact and
+  arrived at a county's server as a well-formed predicate with the tail
+  commented out. The same payload was rendered unencoded in the `WHERE clause:`
+  line users are invited to copy. Single quotes are now doubled, the
+  SQL-standard escape, in both outputs. Nothing in this package was at risk: it
+  executes no query, stores no data and holds no credentials. The endpoints the
+  query names are third-party government servers, and the realistic route was
+  indirect prompt injection steering a client into making the call.
+
+- **Each tool description now says when to use it and which tool to use
+  instead.** Glama's tool-definition scan scored disambiguation 2 out of 5:
+  "find_county and get_parcel_endpoint overlap heavily: both return endpoint
+  URLs, searchable fields, owner fields, and sample query URLs. list_counties
+  and find_county also both identify counties, so the tool boundaries are not
+  clearly distinct." That reading was correct. The two do return the same
+  per-county record, and nothing in either description told an agent how to
+  choose. What actually separates them is how precisely the caller can already
+  name the county, and none of the four descriptions said so.
+- `find_county` is now described by what only it does: resolve an uncertain,
+  misspelled or FIPS-coded reference, and name every county it matched rather
+  than guess one. `get_parcel_endpoint` is the exact-pair lookup and says to
+  call `find_county` first when the name is uncertain. `list_counties` says it
+  deliberately returns no URLs. `build_owner_query` says it is the only tool
+  that searches for a named owner, and that this server never executes a query.
+- README gains a four-row table for choosing a tool, and states the overlap
+  outright instead of leaving a reader to find it.
+
 ## 0.2.1 — 2026-09-03
 
 Metadata only. No behaviour change. The package author, the license holder

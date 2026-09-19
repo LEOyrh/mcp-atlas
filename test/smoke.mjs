@@ -126,6 +126,42 @@ async function run() {
   assert(queryText.includes("UPPER(TaxName)"), "build_owner_query uses UPPER() wrapper");
   assert(queryText.includes("SMITH"), "build_owner_query includes owner name");
 
+  // Step 6b: an owner name cannot escape the SQL string literal.
+  //
+  // A `where` is SQL and a single quote closes the literal. encodeURIComponent is
+  // not an escape here: `'` and `)` are both unreserved, so `A') OR 1=1 --` used to
+  // pass through intact and arrive at a county's ArcGIS server as a well-formed
+  // predicate with the tail commented out. Nothing of ours is at risk - the server
+  // executes nothing and holds no credentials - but the payload ships in a public
+  // npm package and points at third-party government endpoints, and the realistic
+  // route is indirect prompt injection steering a client into the call.
+  //
+  // Both outputs are checked because there are two of them: the URL, and the WHERE
+  // clause printed for a human to paste. Escaping one and not the other is the same
+  // bug with a longer path to it.
+  sendMessage(proc, 51, "tools/call", {
+    name: "build_owner_query",
+    arguments: { state: "IL", county: "Kane", owner_name: "A') OR 1=1 --" },
+  });
+  const injResp = await readResponse(proc);
+  const injText = injResp.result?.content?.[0]?.text ?? "";
+  // Assert on the bytes the user actually receives rather than decoding: the
+  // output legitimately contains bare `%` LIKE wildcards, so decodeURIComponent
+  // throws on it. Folding %20 back to a space is all that is needed to compare
+  // the URL copy and the printed clause against the same shape.
+  const injFlat = injText.replace(/%20/g, " ");
+  // Twice, not once: the URL and the printed clause are built separately, so a
+  // single occurrence means one of the two paths escaped and the other did not.
+  // Asserting mere presence passed under both halves of the sabotage proof.
+  assert(
+    injText.split("A'')").length - 1 === 2,
+    "build_owner_query doubles the quote in BOTH the URL and the printed WHERE clause",
+  );
+  assert(
+    !injFlat.includes("A') OR"),
+    "build_owner_query leaves no closed literal followed by an injected OR, in either the URL or the printed WHERE clause",
+  );
+
   // Step 7: THE CASE THAT COST A REAL USER.
   //
   // Oakland County MI documents NAME1 and NAME2 as owner columns, and neither

@@ -1,6 +1,6 @@
 {
   "name": "@urbankitstudio/mcp-atlas",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Query the verified parcel ArcGIS REST endpoints of 171 counties across all 50 US states (174 layers) for owner, APN and address lookup via the Model Context Protocol (MCP).",
   "keywords": [
     "mcp",

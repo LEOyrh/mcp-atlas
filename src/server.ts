@@ -71,6 +71,21 @@ function ownerFieldFrom(county: CountyRecord, endpoint: EndpointRecord): string 
   return ownerFieldFor(county, endpoint).field;
 }
 
+/**
+ * An ArcGIS `where` is SQL, and a single quote closes the string literal.
+ * encodeURIComponent does not help: `'` and `)` are both in its unreserved set, so
+ * `A') OR 1=1 --` passes through encoding intact and lands OUTSIDE the quotes as a
+ * live predicate against a county's server. Doubling the quote is the SQL-standard
+ * escape and keeps the whole input inside the literal where it belongs.
+ *
+ * Every caller that puts user text in a `where` goes through this, including the
+ * clause rendered for a human to copy: escaping only the URL would leave the same
+ * payload one paste away from running.
+ */
+export function escapeSqlLiteral(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
 function buildArcgisOwnerQuery(
   county: CountyRecord,
   endpoint: EndpointRecord,
@@ -78,7 +93,7 @@ function buildArcgisOwnerQuery(
 ): string {
   const field = ownerFieldFrom(county, endpoint);
   if (!field) return "";
-  const where = `UPPER(${field}) LIKE UPPER('%25${encodeURIComponent(ownerQuery)}%25')`;
+  const where = `UPPER(${field}) LIKE UPPER('%25${encodeURIComponent(escapeSqlLiteral(ownerQuery))}%25')`;
   const liveFields = endpoint.searchFields
     .filter((sf) => sf.searchable)
     .map((sf) => sf.name)
@@ -154,7 +169,7 @@ server.registerTool(
   {
     title: "List covered counties",
     description:
-      `Returns all counties in the UrbanKit Atlas that have a verified ArcGIS REST parcel endpoint. Pass a state abbreviation (e.g. 'IL') or state name (e.g. 'Illinois') to filter by state. Omit state to list all ~${atlas.totals.counties} counties.`,
+      `Browse what the atlas covers. Answers "is this county covered?" and "what can I search there?" with one line per county: state, name, slug, and whether owner-name search is available or the county publishes parcel numbers only. Deliberately returns NO endpoint URLs or field names; call get_parcel_endpoint for one county's technical record. Filter with a state abbreviation ('IL') or name ('Illinois'), or omit state for all ~${atlas.totals.counties} counties.`,
     inputSchema: {
       state: z
         .string()
@@ -242,9 +257,9 @@ server.registerTool(
 server.registerTool(
   "find_county",
   {
-    title: "Find a county by name or FIPS",
+    title: "Resolve an uncertain county reference",
     description:
-      "Fuzzy-matches a county by name (e.g. 'Kane', 'Cook County', 'Cook County IL') or by 5-digit FIPS code. Returns endpoint URLs, searchable field names, owner field, sample query URL, and license info.",
+      "Use when you do NOT already know the exact state and county. Fuzzy-matches one free-text reference ('Kane', 'Cook County IL', a misspelling, or a 5-digit FIPS code) against every covered county and names each county it matched, so an ambiguous reference comes back as a list to choose from rather than a silent guess. Each match carries that county's technical record, the same record get_parcel_endpoint returns for one county. Call get_parcel_endpoint directly whenever you already hold an exact state and county; come here only to turn a vague, misspelled or coded reference into definite ones.",
     inputSchema: {
       query: z
         .string()
@@ -337,9 +352,9 @@ server.registerTool(
 server.registerTool(
   "get_parcel_endpoint",
   {
-    title: "Get parcel ArcGIS REST endpoint",
+    title: "Get one county's parcel endpoint record",
     description:
-      "Returns the full ArcGIS REST service URL, layer index, searchable field names, owner field, a ready sample ?where=…&f=json query, and the UrbanKit deep-link for a specific county.",
+      "The default lookup once the county is known. Takes an exact state and county and returns that county's ArcGIS REST service URL, layer index, searchable field names, verified owner/taxpayer field, a generic sample ?where=…&f=json query, and the UrbanKit deep-link. If the county name is uncertain, misspelled, or you hold only a FIPS code, call find_county first. To search for a named person or company, call build_owner_query rather than editing the sample query by hand.",
     inputSchema: {
       state: z
         .string()
@@ -462,9 +477,9 @@ server.registerTool(
 server.registerTool(
   "build_owner_query",
   {
-    title: "Build ArcGIS owner name query URL",
+    title: "Build an owner-name search URL for one county",
     description:
-      "Constructs the exact ArcGIS REST query URL using that county's verified owner/taxpayer field. Returns a URL you can open in a browser or fetch directly. The query uses UPPER(field) LIKE UPPER('%NAME%') — case-insensitive partial match.",
+      "The only tool that searches for a named owner. Fills a person or company name into that county's verified owner/taxpayer field as UPPER(field) LIKE UPPER('%NAME%'), a case-insensitive partial match, and returns a URL you can fetch or open in a browser. get_parcel_endpoint returns the endpoint and a generic sample query, not a name search, so come here for the name. This server does not execute the query and returns no parcel records: fetch the returned URL yourself. Counties that publish no owner name are refused here with that reason.",
     inputSchema: {
       state: z
         .string()
@@ -531,7 +546,7 @@ server.registerTool(
       }
 
       const queryUrl = buildArcgisOwnerQuery(countyRecord, ep, owner_name);
-      const where = `UPPER(${ownerField}) LIKE UPPER('%${owner_name}%')`;
+      const where = `UPPER(${ownerField}) LIKE UPPER('%${escapeSqlLiteral(owner_name)}%')`;
 
       results.push(
         [
